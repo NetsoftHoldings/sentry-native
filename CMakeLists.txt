@@ -23,6 +23,15 @@ option(SENTRY_PIC "Build sentry (and dependent) libraries as position independen
 option(SENTRY_BUILD_TESTS "Build sentry-native tests" "${SENTRY_MAIN_PROJECT}")
 option(SENTRY_BUILD_EXAMPLES "Build sentry-native example(s)" "${SENTRY_MAIN_PROJECT}")
 
+if( LINUX )
+    option( FORCE32 "Force a 32bit compile on a 64bit host" OFF)
+    if( FORCE32 )
+	set(CMAKE_C_FLAGS    "${CMAKE_C_FLAGS} -m32 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE" )
+	set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -m32 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE" )
+	set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS OFF)
+    endif()
+endif()
+
 # CMAKE_POSITION_INDEPENDENT_CODE must be set BEFORE adding any libraries (including subprojects)
 if(SENTRY_PIC)
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
