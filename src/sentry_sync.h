@@ -175,6 +175,112 @@ typedef CONDITION_VARIABLE sentry_cond_t;
 #    include <pthread.h>
 #    include <sys/time.h>
 
+#    if defined(__MAC_OS_X_VERSION_MIN_REQUIRED)                               \
+        && (__MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_7)
+typedef struct recursive_mutex_s {
+    pthread_mutex_t mutex;
+    pthread_t owner;
+    size_t depth;
+} recursive_mutex_t;
+
+static inline int
+recursive_mutex_lock(recursive_mutex_t *mutex)
+{
+    if (mutex->owner == pthread_self()) {
+        mutex->depth++;
+        return 0;
+    } else {
+        int ret = pthread_mutex_lock(&mutex->mutex);
+        if (ret == 0) {
+            mutex->owner = pthread_self();
+            mutex->depth = 0;
+        }
+        return ret;
+    }
+}
+
+static inline int
+recursive_mutex_trylock(recursive_mutex_t *mutex)
+{
+    if (mutex->owner == pthread_self()) {
+        mutex->depth++;
+        return 0;
+    } else {
+        int ret = pthread_mutex_trylock(&mutex->mutex);
+        if (ret == 0) {
+            mutex->owner = pthread_self();
+            mutex->depth = 0;
+        }
+        return ret;
+    }
+}
+
+static inline int
+recursive_mutex_unlock(recursive_mutex_t *mutex)
+{
+    if (mutex->owner != pthread_self()) {
+        return EPERM;
+    } else if (mutex->depth) {
+        mutex->depth--;
+        return 0;
+    } else {
+        int ret = pthread_mutex_unlock(&mutex->mutex);
+        if (ret == 0) {
+            mutex->owner = 0;
+            mutex->depth = 0;
+        }
+        return ret;
+    }
+}
+
+static inline int
+recursive_cond_wait(pthread_cond_t *cond, recursive_mutex_t *mutex)
+{
+    if (mutex->owner != pthread_self()) {
+        return EPERM;
+    }
+    // shouldnt be holding a recursive lock
+    assert(mutex->depth == 0);
+    mutex->owner = 0;
+    int ret = pthread_cond_wait(cond, &mutex->mutex);
+    if (ret == 0) {
+        mutex->owner = pthread_self();
+        mutex->depth = 0;
+    }
+    return ret;
+}
+
+static inline int
+recursive_cond_timedwait(pthread_cond_t *cond, recursive_mutex_t *mutex,
+    const struct timespec *abstime)
+{
+    if (mutex->owner != pthread_self()) {
+        return EPERM;
+    }
+    // shouldnt be holding a recursive lock
+    assert(mutex->depth == 0);
+    mutex->owner = 0;
+    int ret = pthread_cond_timedwait(cond, &mutex->mutex, abstime);
+    if (ret == 0 || ret == ETIMEDOUT) {
+        mutex->owner = pthread_self();
+        mutex->depth = 0;
+    }
+    return ret;
+}
+
+#        define PTHREAD_RECURSIVE_MUTEX_INITIALIZER                            \
+            {                                                                  \
+                PTHREAD_MUTEX_INITIALIZER, 0, 0                                \
+            }
+#        define pthread_mutex_t recursive_mutex_t
+#        define pthread_mutex_lock recursive_mutex_lock
+#        define prhread_mutex_trylock recursive_mutex_trylock
+#        define pthread_mutex_unlock recursive_mutex_unlock
+#        define pthread_cond_wait recursive_cond_wait
+#        define pthread_cond_timedwait recursive_cond_timedwait
+
+#    endif
+
 /* on unix systems signal handlers can interrupt anything which means that
    we're restricted in what we can do.  In particular it's possible that
    we would end up dead locking ourselves.  While we cannot fully prevent
