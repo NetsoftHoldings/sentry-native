@@ -16,14 +16,14 @@
 
 #    if _WIN32_WINNT < 0x0600
 
-#        define INIT_ONCE_STATIC_INIT                                          \
+#        define INIT_ONCE_STATIC_INIT_PREVISTA                                 \
             {                                                                  \
                 0                                                              \
             }
 
 typedef union {
     PVOID Ptr;
-} INIT_ONCE, *PINIT_ONCE;
+} INIT_ONCE_PREVISTA, *PINIT_ONCE_PREVISTA;
 
 typedef struct {
     HANDLE Semaphore;
@@ -32,12 +32,12 @@ typedef struct {
     LONG Target;
 } CONDITION_VARIABLE_PREVISTA, *PCONDITION_VARIABLE_PREVISTA;
 
-typedef BOOL(WINAPI *PINIT_ONCE_FN)(
-    PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context);
+typedef BOOL(WINAPI *PINIT_ONCE_FN_PREVISTA)(
+    PINIT_ONCE_PREVISTA InitOnce, PVOID Parameter, PVOID *Context);
 
-inline BOOL
-InitOnceExecuteOnce(
-    PINIT_ONCE InitOnce, PINIT_ONCE_FN InitFn, PVOID Parameter, LPVOID *Context)
+static inline BOOL
+InitOnceExecuteOnce_PREVISTA(
+    PINIT_ONCE_PREVISTA InitOnce, PINIT_ONCE_FN_PREVISTA InitFn, PVOID Parameter, LPVOID *Context)
 {
     for (;;) {
         switch ((ULONG_PTR)InitOnce->Ptr) {
@@ -64,7 +64,7 @@ InitOnceExecuteOnce(
     }
 }
 
-inline void
+static inline void
 InitializeConditionVariable_PREVISTA(
     PCONDITION_VARIABLE_PREVISTA ConditionVariable)
 {
@@ -74,7 +74,7 @@ InitializeConditionVariable_PREVISTA(
     ConditionVariable->ContinueEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
 }
 
-inline BOOL
+static inline BOOL
 SleepConditionVariableCS_PREVISTA(
     PCONDITION_VARIABLE_PREVISTA cv, PCRITICAL_SECTION cs, DWORD timeout)
 {
@@ -96,7 +96,7 @@ SleepConditionVariableCS_PREVISTA(
     return result;
 }
 
-inline void
+static inline void
 WakeConditionVariable_PREVISTA(PCONDITION_VARIABLE_PREVISTA ConditionVariable)
 {
     if (!ConditionVariable) {
@@ -117,13 +117,19 @@ WakeConditionVariable_PREVISTA(PCONDITION_VARIABLE_PREVISTA ConditionVariable)
 #    endif /* _WIN32_WINNT < 0x0600 */
 
 struct sentry__winmutex_s {
+#    if _WIN32_WINNT < 0x0600
+    INIT_ONCE_PREVISTA init_once;
+#else
     INIT_ONCE init_once;
+#endif
     CRITICAL_SECTION critical_section;
 };
-
 static inline BOOL CALLBACK
-sentry__winmutex_init(
-    PINIT_ONCE UNUSED(InitOnce), PVOID cs, PVOID *UNUSED(lpContext))
+#    if _WIN32_WINNT < 0x0600
+sentry__winmutex_init(PINIT_ONCE_PREVISTA UNUSED(InitOnce), PVOID cs, PVOID *UNUSED(lpContext))
+#else
+sentry__winmutex_init(PINIT_ONCE UNUSED(InitOnce), PVOID cs, PVOID *UNUSED(lpContext))
+#endif
 {
     InitializeCriticalSection((LPCRITICAL_SECTION)cs);
     return TRUE;
@@ -132,17 +138,30 @@ sentry__winmutex_init(
 static inline void
 sentry__winmutex_lock(struct sentry__winmutex_s *mutex)
 {
+#    if _WIN32_WINNT < 0x0600
+    InitOnceExecuteOnce_PREVISTA(&mutex->init_once, sentry__winmutex_init,
+        &mutex->critical_section, NULL);
+#else
     InitOnceExecuteOnce(&mutex->init_once, sentry__winmutex_init,
         &mutex->critical_section, NULL);
+#endif
     EnterCriticalSection(&mutex->critical_section);
 }
 
 typedef HANDLE sentry_threadid_t;
 typedef struct sentry__winmutex_s sentry_mutex_t;
+#    if _WIN32_WINNT < 0x0600
+#    define SENTRY__MUTEX_INIT                                                 \
+        {                                                                      \
+            INIT_ONCE_STATIC_INIT_PREVISTA, { 0 }                             \
+        }
+#else
 #    define SENTRY__MUTEX_INIT                                                 \
         {                                                                      \
             INIT_ONCE_STATIC_INIT, { 0 }                                       \
         }
+#endif
+
 #    define sentry__mutex_lock(Lock) sentry__winmutex_lock(Lock)
 #    define sentry__mutex_unlock(Lock)                                         \
         LeaveCriticalSection(&(Lock)->critical_section)
