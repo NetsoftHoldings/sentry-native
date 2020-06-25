@@ -6,6 +6,37 @@
 #ifdef SENTRY_PLATFORM_DARWIN
 #    include <stdlib.h>
 
+#if defined(__MAC_OS_X_VERSION_MIN_REQUIRED)                                   \
+    && (__MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_7)
+void arc4random_buf(void* dst, size_t bytes ) {
+    size_t whole = bytes / 4;
+    size_t remainder = bytes % 4;
+    uint8_t*  buf8 = (uint8_t*)dst;
+    uint32_t* buf32 = (uint32_t*)(buf8 + remainder);
+    uint32_t  rand = arc4random(); 
+
+    switch( remainder ) {
+    case 3:
+       buf8[2] = 0xFF & (rand>>16);
+    case 2:
+       buf8[1] = 0xFF & (rand>>8);
+    case 1:
+       buf8[0] = 0xFF & rand;
+       break;
+    case 0:
+    default:
+        buf32[0] = rand;
+        buf32++;
+        whole--;
+        break;
+    }
+
+    for(size_t n = 0; n < whole; ++n) {
+        buf32[n] = arc4random();
+    }
+}
+#endif
+
 static int
 getrandom_arc4random(void *dst, size_t bytes)
 {
