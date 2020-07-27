@@ -52,21 +52,9 @@ shutdown_task(void *data)
     sentry__mutex_unlock(&bgw->task_lock);
 }
 
-#ifdef _MSC_VER
-#    define THREAD_FUNCTION_API __stdcall
-#else
-#    define THREAD_FUNCTION_API
-#endif
-
-#ifdef __MINGW32__
-#    define UNSIGNED_MINGW unsigned
-#else
-#    define UNSIGNED_MINGW
-#endif
-
 // pthreads use `void *` return types, whereas windows uses `DWORD`
 #ifdef SENTRY_PLATFORM_WINDOWS
-static UNSIGNED_MINGW DWORD THREAD_FUNCTION_API
+static DWORD WINAPI
 #else
 static void *
 #endif
