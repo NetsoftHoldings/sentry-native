@@ -226,10 +226,10 @@ recursive_mutex_unlock(recursive_mutex_t *mutex)
         mutex->depth--;
         return 0;
     } else {
+        mutex->owner = 0;
+        mutex->depth = 0;
         int ret = pthread_mutex_unlock(&mutex->mutex);
         if (ret == 0) {
-            mutex->owner = 0;
-            mutex->depth = 0;
         }
         return ret;
     }
@@ -261,11 +261,10 @@ recursive_cond_timedwait(pthread_cond_t *cond, recursive_mutex_t *mutex,
     }
     // shouldnt be holding a recursive lock
     assert(mutex->depth == 0);
-    mutex->owner = 0;
+    // Except in the case of [ETIMEDOUT], all these error checks shall act as if they were performed immediately at the beginning of processing for the function and shall cause an error return, in effect, prior to modifying the state of the mutex specified by mutex or the condition variable specified by cond.
     int ret = pthread_cond_timedwait(cond, &mutex->mutex, abstime);
-    if (ret == 0 || ret == ETIMEDOUT) {
+    if (ret != EPERM) {
         mutex->owner = pthread_self();
-        mutex->depth = 0;
     }
     return ret;
 }
