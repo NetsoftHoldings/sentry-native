@@ -449,6 +449,10 @@ sentry__iso8601_to_msec(const char *iso)
 #    define sentry__locale_t locale_t
 #endif
 
+#if _WIN32_WINNT && _WIN32_WINNT < 0x0602
+typedef  _locale_t (__cdecl *create_locale_proc)(int,const char*);
+#endif
+
 // On NDK locales are not supported.  It defines `stdtod_l` as a function that
 // forwards to `stdtod`, but it does not define `vsnprintf_l` sadly.  This means
 // if Android ever adds locale support in NDK we will have to revisit this code
@@ -461,7 +465,17 @@ c_locale()
     static sentry__locale_t c_locale;
     if (sentry__atomic_store(&c_locale_initialized, 1) == 0) {
 #    ifdef SENTRY_PLATFORM_WINDOWS
+        // windows 7 and below dont have _create_locale, so we will load it dynamically and use it if present.
+#       if _WIN32_WINNT < 0x0602
+        HMODULE msvcrt = NULL;
+        create_locale_proc proc = NULL;
+        if( (msvcrt = LoadLibraryW(L"msvcrt.dll")) ) {
+             proc = (create_locale_proc)GetProcAddress( msvcrt, "_create_locale");
+        }
+        c_locale = proc ? proc( LC_ALL, "C" ) : NULL;
+#       else
         c_locale = _create_locale(LC_ALL, "C");
+#       endif
 #    else
         c_locale = newlocale(LC_ALL_MASK, "C", (sentry__locale_t)0);
 #    endif
